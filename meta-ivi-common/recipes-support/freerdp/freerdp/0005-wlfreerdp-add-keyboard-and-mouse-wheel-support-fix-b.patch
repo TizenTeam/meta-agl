@@ -1,0 +1,294 @@
+From 8fd7405950bde83be51f9a62a85ce0217fd27475 Mon Sep 17 00:00:00 2001
+From: Manuel Bachmann <manuel.bachmann@open.eurogiciel.org>
+Date: Wed, 26 Nov 2014 11:22:32 +0100
+Subject: [PATCH 11/11] wlfreerdp: add keyboard and mouse wheel support, fix
+ bugs
+
+This commit does the following:
+
+* fix the keyboard logic (which now fully works), add support for vertical mouse wheel events ;
+* make the rendering a lot more efficient, by using RDP damage information to refresh only the relevant part of the buffer ;
+* fix two race conditions. wlfreerdp should not crash anymore now ;
+* fix shm_open() and shm_unlink() calls ;
+* improve the code style.
+
+Change-Id: I33520b60e0e1ebec6c527883fa5c4ab04d0c45a2
+Origin: https://github.com/FreeRDP/FreeRDP/pull/2232
+Signed-off-by: Manuel Bachmann <manuel.bachmann@open.eurogiciel.org>
+---
+ client/Wayland/wlf_input.c  |   57 ++++++++++++++++++++++++++++++++++++++-----
+ client/Wayland/wlf_input.h  |    8 +++---
+ client/Wayland/wlf_window.c |   49 +++++++++++++++++++++----------------
+ client/Wayland/wlfreerdp.c  |   27 ++++++++++----------
+ 4 files changed, 98 insertions(+), 43 deletions(-)
+
+diff --git a/client/Wayland/wlf_input.c b/client/Wayland/wlf_input.c
+index a99ff24..76944d4 100644
+--- a/client/Wayland/wlf_input.c
++++ b/client/Wayland/wlf_input.c
+@@ -42,22 +42,29 @@ static void wl_pointer_motion(void* data, struct wl_pointer* pointer, uint32_t t
+ 
+ 	input = input_w->input;
+ 
+-	x = wl_fixed_to_int(sx_w);
+-	y = wl_fixed_to_int(sy_w);
++	x = (UINT16) wl_fixed_to_int(sx_w);
++	y = (UINT16) wl_fixed_to_int(sy_w);
+ 
+ 	input->MouseEvent(input, PTR_FLAGS_MOVE, x, y);
++
++	input_w->last_x = x;
++	input_w->last_y = y;
+ }
+ 
+ static void wl_pointer_button(void* data, struct wl_pointer* pointer, uint32_t serial, uint32_t time, uint32_t button, uint32_t state)
+ {
+ 	wlfInput* input_w = data;
+ 	rdpInput* input;
+-	int flags;
++	UINT16 x;
++	UINT16 y;
++	UINT16 flags;
+ 
+ 	input = input_w->input;
+ 
+ 	if (state == WL_POINTER_BUTTON_STATE_PRESSED)
+ 		flags = PTR_FLAGS_DOWN;
++	else
++		flags = 0;
+ 
+ 	switch (button)
+ 	{
+@@ -71,7 +78,33 @@ static void wl_pointer_button(void* data, struct wl_pointer* pointer, uint32_t s
+ 			flags |= PTR_FLAGS_BUTTON3;
+ 			break;
+ 		default:
+-			break;
++			return;
++	}
++
++	x = input_w->last_x;
++	y = input_w->last_y;
++
++	input->MouseEvent(input, flags, x, y);
++}
++
++static void wl_pointer_axis(void* data, struct wl_pointer* pointer, uint32_t time, uint32_t axis, wl_fixed_t value)
++{
++	wlfInput* input_w = data;
++	rdpInput* input;
++	UINT16 flags;
++	int direction;
++
++	input = input_w->input;
++
++	flags = PTR_FLAGS_WHEEL;
++
++	if (axis == WL_POINTER_AXIS_VERTICAL_SCROLL)
++	{
++		direction = wl_fixed_to_int(value);
++		if (direction < 0)
++			flags |= 0x0078;
++		else
++			flags |= PTR_FLAGS_WHEEL_NEGATIVE | 0x0088;
+ 	}
+ 
+ 	input->MouseEvent(input, flags, 0, 0);
+@@ -83,7 +116,7 @@ static const struct wl_pointer_listener wl_pointer_listener =
+ 	wl_pointer_leave,
+ 	wl_pointer_motion,
+ 	wl_pointer_button,
+-	NULL
++	wl_pointer_axis
+ };
+ 
+ static void wl_keyboard_keymap(void* data, struct wl_keyboard* keyboard, uint32_t format, int fd, uint32_t size)
+@@ -93,7 +126,17 @@ static void wl_keyboard_keymap(void* data, struct wl_keyboard* keyboard, uint32_
+ 
+ static void wl_keyboard_enter(void* data, struct wl_keyboard* keyboard, uint32_t serial, struct wl_surface* surface, struct wl_array* keys)
+ {
++	wlfInput* input_w = data;
++	rdpInput* input;
++	UINT16 x;
++	UINT16 y;
++
++	input = input_w->input;
++
++	x = input_w->last_x;
++	y = input_w->last_y;
+ 
++	input->FocusInEvent(input, 0, x, y);
+ }
+ 
+ static void wl_keyboard_leave(void* data, struct wl_keyboard* keyboard, uint32_t serial, struct wl_surface* surface)
+@@ -115,7 +158,7 @@ static void wl_keyboard_key(void* data, struct wl_keyboard* keyboard, uint32_t s
+ 	else
+ 		key_down = FALSE;
+ 
+-	rdp_scancode = freerdp_keyboard_get_rdp_scancode_from_x11_keycode(key);
++	rdp_scancode = (DWORD) key;
+ 
+ 	if (rdp_scancode == RDP_SCANCODE_UNKNOWN)
+ 		return;
+@@ -183,6 +226,8 @@ wlfInput* wlf_CreateInput(wlfContext* wlfc)
+ 	if (input)
+ 	{
+ 		input->input = wlfc->context.input;
++		input->last_x = 0;
++		input->last_y = 0;
+ 
+ 		wl_seat_add_listener(seat, &wl_seat_listener, input);
+ 	}
+diff --git a/client/Wayland/wlf_input.h b/client/Wayland/wlf_input.h
+index 2d738fc..46f2447 100644
+--- a/client/Wayland/wlf_input.h
++++ b/client/Wayland/wlf_input.h
+@@ -28,10 +28,12 @@ typedef struct wlf_input wlfInput;
+ 
+ struct wlf_input
+ {
+-	rdpInput *input;
++	rdpInput* input;
++	UINT16 last_x;
++	UINT16 last_y;
+ 
+-	struct wl_pointer *pointer;
+-	struct wl_keyboard *keyboard;
++	struct wl_pointer* pointer;
++	struct wl_keyboard* keyboard;
+ };
+ 
+ wlfInput* wlf_CreateInput(wlfContext* wlfc);
+diff --git a/client/Wayland/wlf_window.c b/client/Wayland/wlf_window.c
+index ebca932..f3ec245 100644
+--- a/client/Wayland/wlf_window.c
++++ b/client/Wayland/wlf_window.c
+@@ -63,6 +63,8 @@ static void wl_callback_done(void* data, struct wl_callback* callback, uint32_t
+ 	wlfWindow* window = data;
+ 	wlfBuffer* buffer;
+ 	struct wl_shm_pool* shm_pool;
++	void* shm_data;
++	void* free_data;
+ 	int fd;
+ 	int fdt;
+ 
+@@ -73,30 +75,36 @@ static void wl_callback_done(void* data, struct wl_callback* callback, uint32_t
+ 	else
+ 		return;
+ 
+-	fd = shm_open("wlfreerdp_shm", O_CREAT | O_TRUNC | O_RDWR, 0666);
+-	fdt = ftruncate(fd, window->width * window->height * 4);
+-	if (fdt != 0)
+-	{
+-		fprintf(stderr, "window_redraw: could not allocate memory\n");
++	if (!buffer->buffer) {
++		fd = shm_open("/wlfreerdp_shm", O_CREAT | O_RDWR, 0666);
++		fdt = ftruncate(fd, window->width * window->height * 4);
++		if (fdt != 0)
++		{
++			fprintf(stderr, "window_redraw: could not allocate memory\n");
++			close(fd);
++			return;
++		}
++
++		shm_data = mmap(NULL, window->width * window->height * 4, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
++		if (shm_data == MAP_FAILED)
++		{
++			fprintf(stderr, "window_redraw: failed to memory map buffer\n");
++			close(fd);
++			return;
++		}
++
++		shm_pool = wl_shm_create_pool(window->display->shm, fd, window->width * window->height * 4);
++		buffer->buffer = wl_shm_pool_create_buffer(shm_pool, 0, window->width, window->height, window->width* 4, WL_SHM_FORMAT_XRGB8888);
++		wl_buffer_add_listener(buffer->buffer, &wl_buffer_listener, buffer);
++		wl_shm_pool_destroy(shm_pool);
++		shm_unlink("/wlfreerdp_shm");
+ 		close(fd);
+-		return;
+-	}
+ 
+-	buffer->shm_data = mmap(0, window->width * window->height * 4, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+-	if (buffer->shm_data == MAP_FAILED)
+-	{
+-		fprintf(stderr, "window_redraw: failed to memory map buffer\n");
+-		close(fd);
+-		return;
++		free_data = buffer->shm_data;
++		buffer->shm_data = shm_data;
++		munmap(free_data, window->width * window->height * 4);
+ 	}
+ 
+-	shm_pool = wl_shm_create_pool(window->display->shm, fd, window->width * window->height * 4);
+-	buffer->buffer = wl_shm_pool_create_buffer(shm_pool, 0, window->width, window->height, window->width* 4, WL_SHM_FORMAT_XRGB8888);
+-	wl_buffer_add_listener(buffer->buffer, &wl_buffer_listener, buffer);
+-	wl_shm_pool_destroy(shm_pool);
+-	shm_unlink("wlfreerdp_shm");
+-	close(fd);
+-
+ 	 /* this is the real surface data */
+ 	memcpy(buffer->shm_data, (void*) window->data, window->width * window->height * 4);
+ 	wl_surface_attach(window->surface, buffer->buffer, 0, 0);
+@@ -108,7 +116,6 @@ static void wl_callback_done(void* data, struct wl_callback* callback, uint32_t
+ 	wl_surface_commit(window->surface);
+ 
+ 	buffer->busy = TRUE;
+-	munmap(buffer->shm_data, window->width * window->height * 4);
+ }
+ 
+ static const struct wl_callback_listener wl_callback_listener =
+diff --git a/client/Wayland/wlfreerdp.c b/client/Wayland/wlfreerdp.c
+index a807035..5f0d35f 100644
+--- a/client/Wayland/wlfreerdp.c
++++ b/client/Wayland/wlfreerdp.c
+@@ -48,33 +48,34 @@ void wl_begin_paint(rdpContext* context)
+ 
+ void wl_end_paint(rdpContext* context)
+ {
+-	char *data;
+ 	rdpGdi* gdi;
+ 	wlfDisplay* display;
+ 	wlfWindow* window;
+ 	wlfContext* context_w;
++	void* data;
++	INT32 x, y;
++	UINT32 w, h;
++	int i;
+ 
+ 	gdi = context->gdi;
+ 	if (gdi->primary->hdc->hwnd->invalid->null)
+ 		return;
+ 
++	x = gdi->primary->hdc->hwnd->invalid->x;
++	y = gdi->primary->hdc->hwnd->invalid->y;
++	w = gdi->primary->hdc->hwnd->invalid->w;
++	h = gdi->primary->hdc->hwnd->invalid->h;
++
+ 	context_w = (wlfContext*) context;
+ 	display = context_w->display;
+ 	window = context_w->window;
+ 
+-	data = realloc(window->data, gdi->width * gdi->height * 4);
+-
+-	if (!data)
+-	{
+-		if (window->data)
+-			free(window->data);
+-		window->data = NULL;
+-	}
+-	else
+-	{
+-		window->data = data;
+-		memcpy(window->data, (void*) gdi->primary_buffer, gdi->width * gdi->height * 4);
++	for (i = 0; i < h; i++) {
++		memcpy(window->data + ((i+y)*(gdi->width*4)) + x*4,
++		       gdi->primary_buffer + ((i+y)*(gdi->width*4)) + x*4,
++		       w*4);
+ 	}
++
+ 	wlf_RefreshDisplay(display);
+ }
+ 
+-- 
+1.7.10.4
+

@@ -1,0 +1,78 @@
+From 784b9243a39e94524eed3486a4804ee069b718bd Mon Sep 17 00:00:00 2001
+From: Manuel Bachmann <manuel.bachmann@open.eurogiciel.org>
+Date: Wed, 12 Nov 2014 16:59:17 +0100
+Subject: [PATCH 08/11] wlfreerdp: validate the TLS certificate interactively
+
+Allow the user to decide if he trusts a new certificate
+or not, just like we do with xfreerdp ; this allow running
+wlfreerdp without using xfreerdp prior for this sole task.
+
+Change-Id: I8704092c47ea47b2e3896dedf3ebeb1bc63bb3ae
+Origin: https://github.com/FreeRDP/FreeRDP/pull/2202
+Signed-off-by: Manuel Bachmann <manuel.bachmann@open.eurogiciel.org>
+---
+ client/Wayland/wlfreerdp.c |   41 +++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 41 insertions(+)
+
+diff --git a/client/Wayland/wlfreerdp.c b/client/Wayland/wlfreerdp.c
+index 65f8b32..c09cf3f 100644
+--- a/client/Wayland/wlfreerdp.c
++++ b/client/Wayland/wlfreerdp.c
+@@ -288,6 +288,46 @@ BOOL wl_post_connect(freerdp* instance)
+ 	return TRUE;
+ }
+ 
++BOOL wl_verify_certificate(freerdp* instance, char* subject, char* issuer, char* fingerprint)
++{
++	char answer;
++
++	printf("Certificate details:\n");
++	printf("\tSubject: %s\n", subject);
++	printf("\tIssuer: %s\n", issuer);
++	printf("\tThumbprint: %s\n", fingerprint);
++	printf("The above X.509 certificate could not be verified, possibly because you do not have "
++		"the CA certificate in your certificate store, or the certificate has expired. "
++		"Please look at the documentation on how to create local certificate store for a private CA.\n");
++
++	while (1)
++	{
++		printf("Do you trust the above certificate? (Y/N) ");
++		answer = fgetc(stdin);
++
++		if (feof(stdin))
++		{
++			printf("\nError: Could not read answer from stdin.");
++			if (instance->settings->CredentialsFromStdin)
++				printf(" - Run without parameter \"--from-stdin\" to set trust.");
++			printf("\n");
++			return FALSE;
++		}
++
++		if (answer == 'y' || answer == 'Y')
++		{
++			return TRUE;
++		}
++		else if (answer == 'n' || answer == 'N')
++		{
++			break;
++		}
++		printf("\n");
++	}
++
++	return FALSE;
++}
++
+ int wlfreerdp_run(freerdp* instance)
+ {
+ 	int i;
+@@ -399,6 +439,7 @@ int main(int argc, char* argv[])
+ 	instance = freerdp_new();
+ 	instance->PreConnect = wl_pre_connect;
+ 	instance->PostConnect = wl_post_connect;
++	instance->VerifyCertificate = wl_verify_certificate;
+ 
+ 	instance->ContextSize = sizeof(struct wl_context);
+ 	instance->ContextNew = wl_context_new;
+-- 
+1.7.10.4
+

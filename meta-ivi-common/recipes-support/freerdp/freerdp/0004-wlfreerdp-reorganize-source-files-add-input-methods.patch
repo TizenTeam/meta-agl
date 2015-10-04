@@ -1,0 +1,1144 @@
+From 592ddce77c693ccd1481754765cc616c6028a00e Mon Sep 17 00:00:00 2001
+From: Manuel Bachmann <manuel.bachmann@open.eurogiciel.org>
+Date: Mon, 17 Nov 2014 17:45:00 +0100
+Subject: [PATCH 10/11] wlfreerdp: reorganize source files, add input methods
+
+We split the one massive source file into multiple separate
+source files and headers, just like it is done for other
+clients.
+
+We add a new "wlfInput" interface which will try to
+initialize mouse and keyboard at startup. Mouse inputs
+already work, keyboard inputs need further investigation.
+
+Change-Id: I390e008f47813ed29a1bc6648ac2a520cb6bdda8
+Origin: https://github.com/FreeRDP/FreeRDP/pull/2217
+Signed-off-by: Manuel Bachmann <manuel.bachmann@open.eurogiciel.org>
+---
+ client/Wayland/CMakeLists.txt |    9 +-
+ client/Wayland/wlf_display.c  |  110 ++++++++++++++++++
+ client/Wayland/wlf_display.h  |   43 +++++++
+ client/Wayland/wlf_input.c    |  207 ++++++++++++++++++++++++++++++++++
+ client/Wayland/wlf_input.h    |   40 +++++++
+ client/Wayland/wlf_window.c   |  213 +++++++++++++++++++++++++++++++++++
+ client/Wayland/wlf_window.h   |   58 ++++++++++
+ client/Wayland/wlfreerdp.c    |  248 +++++------------------------------------
+ client/Wayland/wlfreerdp.h    |   42 +++++++
+ 9 files changed, 750 insertions(+), 220 deletions(-)
+ create mode 100644 client/Wayland/wlf_display.c
+ create mode 100644 client/Wayland/wlf_display.h
+ create mode 100644 client/Wayland/wlf_input.c
+ create mode 100644 client/Wayland/wlf_input.h
+ create mode 100644 client/Wayland/wlf_window.c
+ create mode 100644 client/Wayland/wlf_window.h
+ create mode 100644 client/Wayland/wlfreerdp.h
+
+diff --git a/client/Wayland/CMakeLists.txt b/client/Wayland/CMakeLists.txt
+index 8ccedb3..32b9aa0 100644
+--- a/client/Wayland/CMakeLists.txt
++++ b/client/Wayland/CMakeLists.txt
+@@ -21,7 +21,14 @@ set(MODULE_PREFIX "FREERDP_CLIENT_WAYLAND")
+ include_directories(${WAYLAND_INCLUDE_DIRS})
+ 
+ set(${MODULE_PREFIX}_SRCS
+-	wlfreerdp.c)
++	wlf_display.c
++	wlf_display.h
++	wlf_window.c
++	wlf_window.h
++	wlf_input.c
++	wlf_input.h
++	wlfreerdp.c
++	wlfreerdp.h)
+ 
+ add_executable(${MODULE_NAME} ${${MODULE_PREFIX}_SRCS})
+ 
+diff --git a/client/Wayland/wlf_display.c b/client/Wayland/wlf_display.c
+new file mode 100644
+index 0000000..08f4455
+--- /dev/null
++++ b/client/Wayland/wlf_display.c
+@@ -0,0 +1,110 @@
++/**
++ * FreeRDP: A Remote Desktop Protocol Implementation
++ * Wayland Displays
++ *
++ * Copyright 2014 Manuel Bachmann <tarnyko@tarnyko.net>
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++#include <stdio.h>
++
++#include "wlf_display.h"
++
++static void wl_registry_handle_global(void* data, struct wl_registry* registry, uint32_t id, const char *interface, uint32_t version)
++{
++	wlfDisplay* display = data;
++
++	if (strcmp(interface, "wl_compositor") == 0)
++		display->compositor = wl_registry_bind(registry, id, &wl_compositor_interface, 1);
++	else if (strcmp(interface, "wl_shell") == 0)
++		display->shell = wl_registry_bind(registry, id, &wl_shell_interface, 1);
++	else if (strcmp(interface, "wl_shm") == 0)
++		display->shm = wl_registry_bind(registry, id, &wl_shm_interface, 1);
++	else if (strcmp(interface, "wl_seat") == 0)
++		display->seat = wl_registry_bind(registry, id, &wl_seat_interface, 1);
++}
++
++static void wl_registry_handle_global_remove(void* data, struct wl_registry* registry, uint32_t name)
++{
++
++}
++
++static const struct wl_registry_listener wl_registry_listener =
++{
++	wl_registry_handle_global,
++	wl_registry_handle_global_remove
++};
++
++
++wlfDisplay* wlf_CreateDisplay(void)
++{
++	wlfDisplay* display;
++
++	display = (wlfDisplay*) malloc(sizeof(wlfDisplay));
++	ZeroMemory(display, sizeof(wlfDisplay));
++
++	if (display)
++	{
++		display->display = wl_display_connect(NULL);
++
++		if (!display->display)
++		{
++			fprintf(stderr, "wl_pre_connect: failed to connect to Wayland compositor\n");
++			fprintf(stderr, "Please check that the XDG_RUNTIME_DIR environment variable is properly set.\n");
++			free(display);
++			return NULL;
++		}
++
++		display->registry = wl_display_get_registry(display->display);
++		wl_registry_add_listener(display->registry, &wl_registry_listener, display);
++		wl_display_roundtrip(display->display);
++
++		if (!display->compositor || !display->shell || !display->shm)
++		{
++			fprintf(stderr, "wl_pre_connect: failed to find needed compositor interfaces\n");
++			free(display);
++			return NULL;
++		}
++	}
++
++	return display;
++}
++
++void wlf_RefreshDisplay(wlfDisplay* display)
++{
++	wl_display_dispatch(display->display);
++}
++
++void wlf_DestroyDisplay(wlfContext* wlfc, wlfDisplay* display)
++{
++	if (display == NULL)
++		return;
++
++	if (wlfc->display == display)
++		wlfc->display = NULL;
++
++	if (display->seat)
++		wl_seat_destroy(display->seat);
++	if (display->shm)
++		wl_shm_destroy(display->shm);
++	if (display->shell)
++		wl_shell_destroy(display->shell);
++	if (display->compositor)
++		wl_compositor_destroy(display->compositor);
++	if (display->registry)
++		wl_registry_destroy(display->registry);
++	wl_display_disconnect(display->display);
++
++	free(display);
++}
+diff --git a/client/Wayland/wlf_display.h b/client/Wayland/wlf_display.h
+new file mode 100644
+index 0000000..9301eec
+--- /dev/null
++++ b/client/Wayland/wlf_display.h
+@@ -0,0 +1,43 @@
++/**
++ * FreeRDP: A Remote Desktop Protocol Implementation
++ * Wayland Displays
++ *
++ * Copyright 2014 Manuel Bachmann <tarnyko@tarnyko.net>
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++#ifndef __WLF_DISPLAY_H
++#define __WLF_DISPLAY_H
++
++#include <wayland-client.h>
++
++typedef struct wlf_display wlfDisplay;
++
++#include "wlfreerdp.h"
++
++struct wlf_display
++{
++	struct wl_display* display;
++	struct wl_registry* registry;
++	struct wl_compositor* compositor;
++	struct wl_shell* shell;
++	struct wl_shm* shm;
++	struct wl_seat* seat;
++};
++
++wlfDisplay* wlf_CreateDisplay(void);
++void wlf_RefreshDisplay(wlfDisplay* display);
++void wlf_DestroyDisplay(wlfContext* wlfc, wlfDisplay* display);
++
++#endif /* __WLF_DISPLAY_H */
+diff --git a/client/Wayland/wlf_input.c b/client/Wayland/wlf_input.c
+new file mode 100644
+index 0000000..a99ff24
+--- /dev/null
++++ b/client/Wayland/wlf_input.c
+@@ -0,0 +1,207 @@
++/**
++ * FreeRDP: A Remote Desktop Protocol Implementation
++ * Wayland Input
++ *
++ * Copyright 2014 Manuel Bachmann <tarnyko@tarnyko.net>
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++#include <linux/input.h>
++
++#include <freerdp/locale/keyboard.h>
++
++#include "wlf_input.h"
++
++static void wl_pointer_enter(void* data, struct wl_pointer* pointer, uint32_t serial, struct wl_surface* surface, wl_fixed_t sx_w, wl_fixed_t sy_w)
++{
++
++}
++
++static void wl_pointer_leave(void* data, struct wl_pointer* pointer, uint32_t serial, struct wl_surface* surface)
++{
++	
++}
++
++static void wl_pointer_motion(void* data, struct wl_pointer* pointer, uint32_t time, wl_fixed_t sx_w, wl_fixed_t sy_w)
++{
++	wlfInput* input_w = data;
++	rdpInput* input;
++	UINT16 x;
++	UINT16 y;
++
++	input = input_w->input;
++
++	x = wl_fixed_to_int(sx_w);
++	y = wl_fixed_to_int(sy_w);
++
++	input->MouseEvent(input, PTR_FLAGS_MOVE, x, y);
++}
++
++static void wl_pointer_button(void* data, struct wl_pointer* pointer, uint32_t serial, uint32_t time, uint32_t button, uint32_t state)
++{
++	wlfInput* input_w = data;
++	rdpInput* input;
++	int flags;
++
++	input = input_w->input;
++
++	if (state == WL_POINTER_BUTTON_STATE_PRESSED)
++		flags = PTR_FLAGS_DOWN;
++
++	switch (button)
++	{
++		case BTN_LEFT:
++			flags |= PTR_FLAGS_BUTTON1;
++			break;
++		case BTN_RIGHT:
++			flags |= PTR_FLAGS_BUTTON2;
++			break;
++		case BTN_MIDDLE:
++			flags |= PTR_FLAGS_BUTTON3;
++			break;
++		default:
++			break;
++	}
++
++	input->MouseEvent(input, flags, 0, 0);
++}
++
++static const struct wl_pointer_listener wl_pointer_listener =
++{
++	wl_pointer_enter,
++	wl_pointer_leave,
++	wl_pointer_motion,
++	wl_pointer_button,
++	NULL
++};
++
++static void wl_keyboard_keymap(void* data, struct wl_keyboard* keyboard, uint32_t format, int fd, uint32_t size)
++{
++
++}
++
++static void wl_keyboard_enter(void* data, struct wl_keyboard* keyboard, uint32_t serial, struct wl_surface* surface, struct wl_array* keys)
++{
++
++}
++
++static void wl_keyboard_leave(void* data, struct wl_keyboard* keyboard, uint32_t serial, struct wl_surface* surface)
++{
++
++}
++
++static void wl_keyboard_key(void* data, struct wl_keyboard* keyboard, uint32_t serial, uint32_t time, uint32_t key, uint32_t state)
++{
++	wlfInput* input_w = data;
++	rdpInput* input;
++	BOOL key_down;
++	DWORD rdp_scancode;
++
++	input = input_w->input;
++
++	if (state == WL_KEYBOARD_KEY_STATE_PRESSED)
++		key_down = TRUE;
++	else
++		key_down = FALSE;
++
++	rdp_scancode = freerdp_keyboard_get_rdp_scancode_from_x11_keycode(key);
++
++	if (rdp_scancode == RDP_SCANCODE_UNKNOWN)
++		return;
++
++	freerdp_input_send_keyboard_event_ex(input, key_down, rdp_scancode);
++}
++
++static void wl_keyboard_modifiers(void* data, struct wl_keyboard* keyboard, uint32_t serial, uint32_t mods_depr, uint32_t mods_latch, uint32_t mods_lock, uint32_t group)
++{
++
++}
++
++static const struct wl_keyboard_listener wl_keyboard_listener =
++{
++	wl_keyboard_keymap,
++	wl_keyboard_enter,
++	wl_keyboard_leave,
++	wl_keyboard_key,
++	wl_keyboard_modifiers
++};
++
++static void wl_seat_handle_capabilities(void* data, struct wl_seat* seat, enum wl_seat_capability capabilities)
++{
++	wlfInput* input = data;
++	struct wl_pointer* pointer;
++	struct wl_keyboard* keyboard;
++
++	if (capabilities & WL_SEAT_CAPABILITY_POINTER)
++	{
++		pointer = wl_seat_get_pointer(seat);
++
++		input->pointer = pointer;
++		wl_pointer_add_listener(pointer, &wl_pointer_listener, input);
++	}
++
++	if (capabilities & WL_SEAT_CAPABILITY_KEYBOARD)
++	{
++		keyboard = wl_seat_get_keyboard(seat);
++
++		input->keyboard = keyboard;
++		wl_keyboard_add_listener(keyboard, &wl_keyboard_listener, input);
++	}
++
++}
++
++static const struct wl_seat_listener wl_seat_listener = {
++	wl_seat_handle_capabilities
++};
++
++
++wlfInput* wlf_CreateInput(wlfContext* wlfc)
++{
++	wlfInput* input;
++	struct wl_seat* seat;
++
++	if (!wlfc->display)
++		return NULL;
++	if (!wlfc->display->seat)
++		return NULL;
++	seat = wlfc->display->seat;
++
++	input = (wlfInput*) malloc(sizeof(wlfInput));
++	ZeroMemory(input, sizeof(wlfInput));
++
++	if (input)
++	{
++		input->input = wlfc->context.input;
++
++		wl_seat_add_listener(seat, &wl_seat_listener, input);
++	}
++
++	return input;
++}
++
++void wlf_DestroyInput(wlfContext* wlfc, wlfInput* input)
++{
++	if (input == NULL)
++		return;
++
++	if (wlfc->input == input)
++		wlfc->input = NULL;
++
++	if (input->pointer)
++		wl_pointer_release(input->pointer);
++	if (input->keyboard)
++		wl_keyboard_release(input->keyboard);
++
++	free(input);
++}
+diff --git a/client/Wayland/wlf_input.h b/client/Wayland/wlf_input.h
+new file mode 100644
+index 0000000..2d738fc
+--- /dev/null
++++ b/client/Wayland/wlf_input.h
+@@ -0,0 +1,40 @@
++/**
++ * FreeRDP: A Remote Desktop Protocol Implementation
++ * Wayland Input
++ *
++ * Copyright 2014 Manuel Bachmann <tarnyko@tarnyko.net>
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++#ifndef __WLF_INPUT_H
++#define __WLF_INPUT_H
++
++#include <wayland-client.h>
++
++typedef struct wlf_input wlfInput;
++
++#include "wlfreerdp.h"
++
++struct wlf_input
++{
++	rdpInput *input;
++
++	struct wl_pointer *pointer;
++	struct wl_keyboard *keyboard;
++};
++
++wlfInput* wlf_CreateInput(wlfContext* wlfc);
++void wlf_DestroyInput(wlfContext* wlfc, wlfInput* input);
++
++#endif /* __WLF_INPUT_H */
+diff --git a/client/Wayland/wlf_window.c b/client/Wayland/wlf_window.c
+new file mode 100644
+index 0000000..ebca932
+--- /dev/null
++++ b/client/Wayland/wlf_window.c
+@@ -0,0 +1,213 @@
++/**
++ * FreeRDP: A Remote Desktop Protocol Implementation
++ * Wayland Windows
++ *
++ * Copyright 2014 Manuel Bachmann <tarnyko@tarnyko.net>
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++#include <stdio.h>
++#include <fcntl.h>
++#include <unistd.h>
++#include <sys/mman.h>
++
++#include "wlf_window.h"
++
++static void wl_shell_surface_handle_ping(void* data, struct wl_shell_surface* shell_surface, uint32_t serial)
++{
++	wl_shell_surface_pong(shell_surface, serial);
++}
++
++static void wl_shell_surface_handle_configure(void* data, struct wl_shell_surface* shell_surface, unsigned int edges, int32_t width, int32_t height)
++{
++	wlfWindow* window = data;
++
++	window->width = width;
++	window->height = height;
++}
++
++static const struct wl_shell_surface_listener wl_shell_surface_listener =
++{
++	wl_shell_surface_handle_ping,
++	wl_shell_surface_handle_configure,
++	NULL
++};
++
++static void wl_buffer_release(void* data, struct wl_buffer* wl_buffer)
++{
++	wlfBuffer* buffer = data;
++
++	buffer->busy = FALSE;
++}
++
++static const struct wl_buffer_listener wl_buffer_listener =
++{
++	wl_buffer_release
++};
++
++static const struct wl_callback_listener wl_callback_listener;
++
++static void wl_callback_done(void* data, struct wl_callback* callback, uint32_t time)
++{
++	wlfWindow* window = data;
++	wlfBuffer* buffer;
++	struct wl_shm_pool* shm_pool;
++	int fd;
++	int fdt;
++
++	if (!window->buffers[0].busy)
++		buffer = &window->buffers[0];
++	else if (!window->buffers[1].busy)
++		buffer = &window->buffers[1];
++	else
++		return;
++
++	fd = shm_open("wlfreerdp_shm", O_CREAT | O_TRUNC | O_RDWR, 0666);
++	fdt = ftruncate(fd, window->width * window->height * 4);
++	if (fdt != 0)
++	{
++		fprintf(stderr, "window_redraw: could not allocate memory\n");
++		close(fd);
++		return;
++	}
++
++	buffer->shm_data = mmap(0, window->width * window->height * 4, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
++	if (buffer->shm_data == MAP_FAILED)
++	{
++		fprintf(stderr, "window_redraw: failed to memory map buffer\n");
++		close(fd);
++		return;
++	}
++
++	shm_pool = wl_shm_create_pool(window->display->shm, fd, window->width * window->height * 4);
++	buffer->buffer = wl_shm_pool_create_buffer(shm_pool, 0, window->width, window->height, window->width* 4, WL_SHM_FORMAT_XRGB8888);
++	wl_buffer_add_listener(buffer->buffer, &wl_buffer_listener, buffer);
++	wl_shm_pool_destroy(shm_pool);
++	shm_unlink("wlfreerdp_shm");
++	close(fd);
++
++	 /* this is the real surface data */
++	memcpy(buffer->shm_data, (void*) window->data, window->width * window->height * 4);
++	wl_surface_attach(window->surface, buffer->buffer, 0, 0);
++	wl_surface_damage(window->surface, 0, 0, window->width, window->height);
++
++	if (callback) wl_callback_destroy(callback);
++	window->callback = wl_surface_frame(window->surface);
++	wl_callback_add_listener(window->callback, &wl_callback_listener, window);
++	wl_surface_commit(window->surface);
++
++	buffer->busy = TRUE;
++	munmap(buffer->shm_data, window->width * window->height * 4);
++}
++
++static const struct wl_callback_listener wl_callback_listener =
++{
++	wl_callback_done
++};
++
++
++wlfWindow* wlf_CreateDesktopWindow(wlfContext* wlfc, char* name, int width, int height, BOOL decorations)
++{
++	wlfWindow* window;
++
++	window = (wlfWindow*) malloc(sizeof(wlfWindow));
++	ZeroMemory(window, sizeof(wlfWindow));
++
++	if (window)
++	{
++		window->width = width;
++		window->height = height;
++		window->fullscreen = FALSE;
++		window->buffers[0].busy = FALSE;
++		window->buffers[1].busy = FALSE;
++		window->callback = NULL;
++		window->display = wlfc->display;
++
++		window->surface = wl_compositor_create_surface(window->display->compositor);
++		window->shell_surface = wl_shell_get_shell_surface(window->display->shell, window->surface);
++		wl_shell_surface_add_listener(window->shell_surface, &wl_shell_surface_listener, window);
++		wl_shell_surface_set_toplevel(window->shell_surface);
++
++		wlf_ResizeDesktopWindow(wlfc, window, width, height);
++
++		wl_surface_damage(window->surface, 0, 0, window->width, window->height);
++	}
++
++	wlf_SetWindowText(wlfc, window, name);
++
++	return window;
++}
++
++void wlf_ResizeDesktopWindow(wlfContext* wlfc, wlfWindow* window, int width, int height)
++{
++	window->width = width;
++	window->height = height;
++}
++
++void wlf_SetWindowText(wlfContext* wlfc, wlfWindow* window, char* name)
++{
++	wl_shell_surface_set_title(window->shell_surface, name);
++}
++
++void wlf_SetWindowFullscreen(wlfContext* wlfc, wlfWindow* window, BOOL fullscreen)
++{
++	if (fullscreen)
++	{
++		wl_shell_surface_set_fullscreen(window->shell_surface, WL_SHELL_SURFACE_FULLSCREEN_METHOD_DEFAULT, 0, NULL);
++		window->fullscreen = TRUE;
++	}
++}
++
++void wlf_ShowWindow(wlfContext* wlfc, wlfWindow* window, BYTE state)
++{
++	switch (state)
++	{
++		case WINDOW_HIDE:
++		case WINDOW_SHOW_MINIMIZED:
++			/* xdg_surface_set_minimized(window->xdg_surface); */
++			break;
++		case WINDOW_SHOW_MAXIMIZED:
++			wl_shell_surface_set_maximized(window->shell_surface, NULL);
++			break;
++		case WINDOW_SHOW:
++			wl_shell_surface_set_toplevel(window->shell_surface);
++			break;
++	}
++}
++
++void wlf_UpdateWindowArea(wlfContext* wlfc, wlfWindow* window, int x, int y, int width, int height)
++{
++	wl_callback_done(window, NULL, 0);
++}
++
++void wlf_DestroyWindow(wlfContext* wlfc, wlfWindow* window)
++{
++	if (window == NULL)
++		return;
++
++	if (wlfc->window == window)
++		wlfc->window = NULL;
++
++	if (window->buffers[0].buffer)
++		wl_buffer_destroy(window->buffers[0].buffer);
++	if (window->buffers[1].buffer)
++		wl_buffer_destroy(window->buffers[1].buffer);
++	if (window->shell_surface)
++		wl_shell_surface_destroy(window->shell_surface);
++	if (window->surface)
++		wl_surface_destroy(window->surface);
++
++	free(window->data);
++	free(window);
++}
+diff --git a/client/Wayland/wlf_window.h b/client/Wayland/wlf_window.h
+new file mode 100644
+index 0000000..df36289
+--- /dev/null
++++ b/client/Wayland/wlf_window.h
+@@ -0,0 +1,58 @@
++/**
++ * FreeRDP: A Remote Desktop Protocol Implementation
++ * Wayland Windows
++ *
++ * Copyright 2014 Manuel Bachmann <tarnyko@tarnyko.net>
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++#ifndef __WLF_WINDOW_H
++#define __WLF_WINDOW_H
++
++#include <wayland-client.h>
++
++typedef struct wlf_window wlfWindow;
++
++#include "wlfreerdp.h"
++
++struct wlf_buffer
++{
++	struct wl_buffer* buffer;
++	void* shm_data;
++	BOOL busy;
++};
++typedef struct wlf_buffer wlfBuffer;
++
++struct wlf_window
++{
++	int width;
++	int height;
++	struct wl_surface* surface;
++	struct wl_shell_surface* shell_surface;
++	struct wl_callback* callback;
++	wlfBuffer buffers[2];
++	wlfDisplay* display;
++	void* data;
++	BOOL fullscreen;
++};
++
++wlfWindow* wlf_CreateDesktopWindow(wlfContext* wlfc, char* name, int width, int height, BOOL decorations);
++void wlf_ResizeDesktopWindow(wlfContext* wlfc, wlfWindow* window, int width, int height);
++void wlf_SetWindowText(wlfContext* wlfc, wlfWindow* window, char* name);
++void wlf_SetWindowFullscreen(wlfContext* wlfc, wlfWindow* window, BOOL fullscree);
++void wlf_ShowWindow(wlfContext* wlfc, wlfWindow* window, BYTE state);
++void wlf_UpdateWindowArea(wlfContext* wlfc, wlfWindow* window, int x, int y, int width, int height);
++void wlf_DestroyWindow(wlfContext* wlfc, wlfWindow* window);
++
++#endif /* __WLF_WINDOW_H */
+diff --git a/client/Wayland/wlfreerdp.c b/client/Wayland/wlfreerdp.c
+index c3f3c29..a807035 100644
+--- a/client/Wayland/wlfreerdp.c
++++ b/client/Wayland/wlfreerdp.c
+@@ -1,6 +1,6 @@
+ /**
+  * FreeRDP: A Remote Desktop Protocol Implementation
+- * Wayland Client Interface
++ * Wayland Client
+  *
+  * Copyright 2014 Manuel Bachmann <tarnyko@tarnyko.net>
+  *
+@@ -19,154 +19,12 @@
+ 
+ #include <stdio.h>
+ #include <errno.h>
+-#include <fcntl.h>
+-#include <unistd.h>
+-#include <sys/mman.h>
+ 
+-#include <freerdp/freerdp.h>
+ #include <freerdp/client/cmdline.h>
+ #include <freerdp/channels/channels.h>
+ #include <freerdp/gdi/gdi.h>
+ 
+-#include <wayland-client.h>
+-
+-struct display
+-{
+-	struct wl_display* display;
+-	struct wl_registry* registry;
+-	struct wl_compositor* compositor;
+-	struct wl_shell* shell;
+-	struct wl_shm* shm;
+-};
+-
+-struct buffer
+-{
+-	struct wl_buffer* buffer;
+-	void* shm_data;
+-	int busy;
+-};
+-
+-struct window
+-{
+-	int width, height;
+-	struct wl_surface* surface;
+-	struct wl_shell_surface* shell_surface;
+-	struct wl_callback* callback;
+-	struct buffer buffers[2];
+-	struct display* display;
+-	void* data;
+-};
+-
+-struct wl_context
+-{
+-	rdpContext _p;
+-	struct display* display;
+-	struct window* window;
+-};
+-
+-static void wl_buffer_release(void* data, struct wl_buffer* wl_buffer)
+-{
+-	struct buffer* buffer = data;
+-
+-	buffer->busy = 0;
+-}
+-
+-static const struct wl_buffer_listener wl_buffer_listener =
+-{
+-	wl_buffer_release
+-};
+-
+-static void window_redraw(void* data, struct wl_callback* callback, uint32_t time);
+-static const struct wl_callback_listener wl_callback_listener = 
+-{
+-	window_redraw
+-};
+-
+-static void window_redraw(void* data, struct wl_callback* callback, uint32_t time)
+-{
+-	struct window* window = data;
+-	struct wl_shm_pool* shm_pool;
+-	struct buffer* buffer;
+-	int fd;
+-	int fdt;
+-
+-	if (!window->buffers[0].busy)
+-		buffer = &window->buffers[0];
+-	else if (!window->buffers[1].busy)
+-		buffer = &window->buffers[1];
+-	else
+-		return;
+-
+-	fd = shm_open("wlfreerdp_shm", O_CREAT | O_TRUNC | O_RDWR, 0666);
+-	fdt = ftruncate(fd, window->width * window->height * 4);
+-	if (fdt != 0)
+-	{
+-		fprintf(stderr, "window_redraw: could not allocate memory\n");
+-		close(fd);
+-		return;
+-	}
+-
+-	buffer->shm_data = mmap(0, window->width * window->height * 4, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+-	if (buffer->shm_data == MAP_FAILED)
+-	{
+-		fprintf(stderr, "window_redraw: failed to memory map buffer\n");
+-		close(fd);
+-		return;
+-	}
+-
+-	shm_pool = wl_shm_create_pool(window->display->shm, fd, window->width * window->height * 4);
+-	buffer->buffer = wl_shm_pool_create_buffer(shm_pool, 0, window->width, window->height, window->width* 4, WL_SHM_FORMAT_XRGB8888);
+-	wl_buffer_add_listener(buffer->buffer, &wl_buffer_listener, buffer);
+-	wl_shm_pool_destroy(shm_pool);
+-	shm_unlink("wlfreerdp_shm");
+-	close(fd);
+-
+-	 /* this is the real surface data */
+-	memcpy(buffer->shm_data, (void*) window->data, window->width * window->height * 4);
+-	wl_surface_attach(window->surface, buffer->buffer, 0, 0);
+-	wl_surface_damage(window->surface, 0, 0, window->width, window->height);
+-
+-	if (callback) wl_callback_destroy(callback);
+-	window->callback = wl_surface_frame(window->surface);
+-	wl_callback_add_listener(window->callback, &wl_callback_listener, window);
+-	wl_surface_commit(window->surface);
+-
+-	buffer->busy = 1;
+-	munmap(buffer->shm_data, window->width * window->height * 4);
+-}
+-
+-static void wl_shell_surface_handle_ping(void* data, struct wl_shell_surface* shell_surface, uint32_t serial)
+-{
+-	wl_shell_surface_pong(shell_surface, serial);
+-}
+-
+-static const struct wl_shell_surface_listener wl_shell_surface_listener =
+-{
+-	wl_shell_surface_handle_ping
+-};
+-
+-static void wl_registry_handle_global(void* data, struct wl_registry* registry, uint32_t id, const char *interface, uint32_t version)
+-{
+-	struct display* display = data;
+-
+-	if (strcmp(interface, "wl_compositor") == 0)
+-		display->compositor = wl_registry_bind(registry, id, &wl_compositor_interface, 1);
+-	else if (strcmp(interface, "wl_shell") == 0)
+-		display->shell = wl_registry_bind(registry, id, &wl_shell_interface, 1);
+-	else if (strcmp(interface, "wl_shm") == 0)
+-		display->shm = wl_registry_bind(registry, id, &wl_shm_interface, 1);
+-}
+-
+-static void wl_registry_handle_global_remove(void* data, struct wl_registry* registry, uint32_t name)
+-{
+-
+-}
+-
+-static const struct wl_registry_listener wl_registry_listener =
+-{
+-	wl_registry_handle_global,
+-	wl_registry_handle_global_remove
+-};
++#include "wlfreerdp.h"
+ 
+ int wl_context_new(freerdp* instance, rdpContext* context)
+ {
+@@ -190,17 +48,17 @@ void wl_begin_paint(rdpContext* context)
+ 
+ void wl_end_paint(rdpContext* context)
+ {
+-	char* data;
++	char *data;
+ 	rdpGdi* gdi;
+-	struct display* display;
+-	struct window* window;
+-	struct wl_context* context_w;
++	wlfDisplay* display;
++	wlfWindow* window;
++	wlfContext* context_w;
+ 
+ 	gdi = context->gdi;
+ 	if (gdi->primary->hdc->hwnd->invalid->null)
+ 		return;
+ 
+-	context_w = (struct wl_context*) context;
++	context_w = (wlfContext*) context;
+ 	display = context_w->display;
+ 	window = context_w->window;
+ 
+@@ -217,74 +75,40 @@ void wl_end_paint(rdpContext* context)
+ 		window->data = data;
+ 		memcpy(window->data, (void*) gdi->primary_buffer, gdi->width * gdi->height * 4);
+ 	}
+-
+-	wl_display_dispatch(display->display);
++	wlf_RefreshDisplay(display);
+ }
+ 
+ BOOL wl_pre_connect(freerdp* instance)
+ {
+-	struct display* display;
+-	struct wl_context* context;
++	wlfDisplay* display;
++	wlfInput* input;
++	wlfContext* context;
+ 
+ 	freerdp_channels_pre_connect(instance->context->channels, instance);
+ 
+-	display = malloc(sizeof(*display));
+-	display->display = wl_display_connect(NULL);
++	context = (wlfContext*) instance->context;
+ 
+-	if (!display->display)
+-	{
+-		fprintf(stderr, "wl_pre_connect: failed to connect to Wayland compositor\n");
+-		fprintf(stderr, "Please check that the XDG_RUNTIME_DIR environment variable is properly set.\n");
+-		free(display);
+-		return FALSE;
+-	}
+-
+-	display->registry = wl_display_get_registry(display->display);
+-	wl_registry_add_listener(display->registry, &wl_registry_listener, display);
+-	wl_display_roundtrip(display->display);
+-
+-	if (!display->compositor || !display->shell || !display->shm)
+-	{
+-		fprintf(stderr, "wl_pre_connect: failed to find needed compositor interfaces\n");
+-		free(display);
+-		return FALSE;
+-	}
+-
+-	 /* put Wayland data in the context here */
+-	context = (struct wl_context*) instance->context;
++	display = wlf_CreateDisplay();
+ 	context->display = display;
+ 
++	input = wlf_CreateInput(context);
++	context->input = input;
++
+ 	return TRUE;
+ }
+ 
+ BOOL wl_post_connect(freerdp* instance)
+ {
+-	struct window* window;
+-	struct wl_context* context;
+-
+-	context = (struct wl_context*) instance->context;
+-
+-	window = malloc(sizeof(*window));
+-	window->width = instance->settings->DesktopWidth;
+-	window->height = instance->settings->DesktopHeight;
+-	window->buffers[0].busy = 0;
+-	window->buffers[1].busy = 0;
+-	window->callback = NULL;
+-	window->display = context->display;
+-	window->surface = wl_compositor_create_surface(window->display->compositor);
+-	window->shell_surface = wl_shell_get_shell_surface(window->display->shell, window->surface);
+-
+-	wl_shell_surface_add_listener(window->shell_surface, &wl_shell_surface_listener, NULL);
+-	wl_shell_surface_set_title(window->shell_surface, "FreeRDP");
+-	wl_shell_surface_set_toplevel(window->shell_surface);
+-	wl_surface_damage(window->surface, 0, 0, window->width, window->height);
+-
+-	 /* GC/GDI logic here */
+ 	rdpGdi* gdi;
++	wlfWindow* window;
++	wlfContext* context;
+ 
+ 	gdi_init(instance, CLRCONV_ALPHA | CLRCONV_INVERT | CLRBUF_32BPP, NULL);
+ 	gdi = instance->context->gdi;
+ 
++	context = (wlfContext*) instance->context;
++	window = wlf_CreateDesktopWindow(context, "FreeRDP", gdi->width, gdi->height, FALSE);
++
+ 	 /* fill buffer with first image here */
+ 	window->data = malloc (gdi->width * gdi->height *4);
+ 	memcpy(window->data, (void*) gdi->primary_buffer, gdi->width * gdi->height * 4);
+@@ -296,7 +120,7 @@ BOOL wl_post_connect(freerdp* instance)
+ 
+ 	freerdp_channels_post_connect(instance->context->channels, instance);
+ 
+-	window_redraw(window, NULL, 0);
++	wlf_UpdateWindowArea(context, window, 0, 0, gdi->width, gdi->height);
+ 
+ 	return TRUE;
+ }
+@@ -414,26 +238,12 @@ int wlfreerdp_run(freerdp* instance)
+ 		}
+ 	}
+ 
+-	struct display* display;
+-	struct window* window;
+-	struct wl_context* context;
+-
+-	context = (struct wl_context*) instance->context;
+-	display = context->display;
+-	window = context->window;
+-	free(window->buffers[0].shm_data);
+-	free(window->buffers[1].shm_data);
+-	free(window->data);
+-
+-	wl_buffer_destroy(window->buffers[0].buffer);
+-	wl_buffer_destroy(window->buffers[1].buffer);
+-	wl_shell_surface_destroy(window->shell_surface);
+-	wl_surface_destroy(window->surface);
+-	wl_shm_destroy(display->shm);
+-	wl_shell_destroy(display->shell);
+-	wl_compositor_destroy(display->compositor);
+-	wl_registry_destroy(display->registry);
+-	wl_display_disconnect(display->display);
++	wlfContext* context;
++
++	context = (wlfContext*) instance->context;
++	wlf_DestroyWindow(context, context->window);
++	wlf_DestroyInput(context, context->input);
++	wlf_DestroyDisplay(context, context->display);
+ 
+ 	freerdp_channels_close(instance->context->channels, instance);
+ 	freerdp_channels_free(instance->context->channels);
+@@ -454,7 +264,7 @@ int main(int argc, char* argv[])
+ 	instance->PostConnect = wl_post_connect;
+ 	instance->VerifyCertificate = wl_verify_certificate;
+ 
+-	instance->ContextSize = sizeof(struct wl_context);
++	instance->ContextSize = sizeof(wlfContext);
+ 	instance->ContextNew = wl_context_new;
+ 	instance->ContextFree = wl_context_free;
+ 	freerdp_context_new(instance);
+diff --git a/client/Wayland/wlfreerdp.h b/client/Wayland/wlfreerdp.h
+new file mode 100644
+index 0000000..d50b4c4
+--- /dev/null
++++ b/client/Wayland/wlfreerdp.h
+@@ -0,0 +1,42 @@
++/**
++ * FreeRDP: A Remote Desktop Protocol Implementation
++ * Wayland Client
++ *
++ * Copyright 2014 Manuel Bachmann <tarnyko@tarnyko.net>
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++#ifndef __WLFREERDP_H
++#define __WLFREERDP_H
++
++#include <freerdp/freerdp.h>
++#include <winpr/wtypes.h>
++
++typedef struct wlf_context wlfContext;
++
++#include "wlf_display.h"
++#include "wlf_window.h"
++#include "wlf_input.h"
++
++struct wlf_context
++{
++	rdpContext context;
++
++	wlfDisplay* display;
++	wlfWindow* window;
++	wlfInput* input;
++};
++
++#endif /* __WLFREERDP_H */
++
+-- 
+1.7.10.4
+

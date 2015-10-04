@@ -1,0 +1,51 @@
+From c969bb4067c835b99b5dd6771afc0fcee6f20c01 Mon Sep 17 00:00:00 2001
+From: Manuel Bachmann <manuel.bachmann@open.eurogiciel.org>
+Date: Mon, 17 Nov 2014 17:39:10 +0100
+Subject: [PATCH 09/11] Fixed realloc return check.
+
+Change-Id: I63d4dbb7db0b6a2a00314f99b36ac51b53f6cf43
+Origin: FreeRDP/FreeRDP/commit/ca7052fa846d6ac293094ef2877db152550efc58
+Author: Armin Novak <armin.novak@gmail.com>
+Signed-off-by: Manuel Bachmann <manuel.bachmann@open.eurogiciel.org>
+---
+ client/Wayland/wlfreerdp.c |   17 +++++++++++++++--
+ 1 file changed, 15 insertions(+), 2 deletions(-)
+
+diff --git a/client/Wayland/wlfreerdp.c b/client/Wayland/wlfreerdp.c
+index c09cf3f..c3f3c29 100644
+--- a/client/Wayland/wlfreerdp.c
++++ b/client/Wayland/wlfreerdp.c
+@@ -190,6 +190,7 @@ void wl_begin_paint(rdpContext* context)
+ 
+ void wl_end_paint(rdpContext* context)
+ {
++	char* data;
+ 	rdpGdi* gdi;
+ 	struct display* display;
+ 	struct window* window;
+@@ -203,8 +204,20 @@ void wl_end_paint(rdpContext* context)
+ 	display = context_w->display;
+ 	window = context_w->window;
+ 
+-	realloc(window->data, gdi->width * gdi->height * 4);
+-	memcpy(window->data, (void*) gdi->primary_buffer, gdi->width * gdi->height * 4);
++	data = realloc(window->data, gdi->width * gdi->height * 4);
++
++	if (!data)
++	{
++		if (window->data)
++			free(window->data);
++		window->data = NULL;
++	}
++	else
++	{
++		window->data = data;
++		memcpy(window->data, (void*) gdi->primary_buffer, gdi->width * gdi->height * 4);
++	}
++
+ 	wl_display_dispatch(display->display);
+ }
+ 
+-- 
+1.7.10.4
+
