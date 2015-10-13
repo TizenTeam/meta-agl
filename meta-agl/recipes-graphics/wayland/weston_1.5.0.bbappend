@@ -8,6 +8,10 @@ SRC_URI_append = "\
 inherit systemd
 DEPENDS_append = " systemd"
 
+EXTRA_OECONF_remove = "--disable-rdp-compositor"
+PACKAGECONFIG_append = " freerdp"
+PACKAGECONFIG[freerdp] = "--enable-rdp-compositor,--disable-rdp-compositor,freerdp"
+
 do_install_append() {
     mkdir -p ${D}${systemd_unitdir}/system/
     cp ${WORKDIR}/weston.service ${D}${systemd_unitdir}/system/
