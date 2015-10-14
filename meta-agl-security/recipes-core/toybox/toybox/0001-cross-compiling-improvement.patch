@@ -1,0 +1,72 @@
+From 4244b26dbc05a0fe81c51ac199d8f2726cdd28ff Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Jos=C3=A9=20Bollo?= <jose.bollo@iot.bzh>
+Date: Fri, 9 Oct 2015 10:55:40 +0200
+Subject: [PATCH 4/4] cross compiling improvement
+
+Change-Id: I9b431119889284616c401fd397ccdd03229df991
+---
+ Makefile        | 2 +-
+ lib/lsm.h       | 4 ++--
+ scripts/make.sh | 4 ++--
+ 3 files changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/Makefile b/Makefile
+index 1ea6929..3a9622e 100644
+--- a/Makefile
++++ b/Makefile
+@@ -31,7 +31,7 @@ bloatcheck: toybox_old toybox_unstripped
+ 
+ generated/instlist: toybox_stuff
+ 	NOBUILD=1 scripts/make.sh
+-	$(HOSTCC) -I . scripts/install.c -o generated/instlist
++	$(HOSTCC) -DONHOST -I . scripts/install.c -o generated/instlist
+ 
+ install_flat: generated/instlist
+ 	scripts/install.sh --symlink --force
+diff --git a/lib/lsm.h b/lib/lsm.h
+index d7e7de9..0996843 100644
+--- a/lib/lsm.h
++++ b/lib/lsm.h
+@@ -3,7 +3,7 @@
+  * Copyright 2015 Rob Landley <rob@landley.net>
+  */
+ 
+-#if CFG_TOYBOX_SELINUX
++#if CFG_TOYBOX_SELINUX && !defined(ONHOST)
+ #include <selinux/selinux.h>
+ #else
+ #define is_selinux_enabled() 0
+@@ -17,7 +17,7 @@
+ #define fsetfilecon(...) (-1)
+ #endif
+ 
+-#if CFG_TOYBOX_SMACK
++#if CFG_TOYBOX_SMACK && !defined(ONHOST)
+ #include <sys/smack.h>
+ #include <sys/xattr.h>
+ #include <linux/xattr.h>
+diff --git a/scripts/make.sh b/scripts/make.sh
+index 7ebe148..29a3d6b 100755
+--- a/scripts/make.sh
++++ b/scripts/make.sh
+@@ -136,7 +136,7 @@ sed -n \
+ 
+ if [ generated/mkflags -ot scripts/mkflags.c ]
+ then
+-  do_loudly $HOSTCC scripts/mkflags.c -o generated/mkflags || exit 1
++  do_loudly $HOSTCC -DONHOST scripts/mkflags.c -o generated/mkflags || exit 1
+ fi
+ 
+ echo -n "generated/flags.h "
+@@ -212,7 +212,7 @@ fi
+ echo "generated/help.h"
+ if [ generated/config2help -ot scripts/config2help.c ]
+ then
+-  do_loudly $HOSTCC scripts/config2help.c -I . lib/xwrap.c lib/llist.c \
++  do_loudly $HOSTCC -DONHOST scripts/config2help.c -I . lib/xwrap.c lib/llist.c \
+     lib/lib.c lib/portability.c -o generated/config2help || exit 1
+ fi
+ generated/config2help Config.in $KCONFIG_CONFIG > generated/help.h || exit 1
+-- 
+2.1.4
+

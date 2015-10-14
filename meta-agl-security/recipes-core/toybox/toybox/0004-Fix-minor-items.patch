@@ -1,0 +1,43 @@
+From 56905ed1fadafbff765e19d8097e39603611d284 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Jos=C3=A9=20Bollo?= <jose.bollo@iot.bzh>
+Date: Wed, 7 Oct 2015 15:55:36 +0200
+Subject: [PATCH 3/3] Fix minor items
+
+---
+ toys/posix/cp.c   |  6 +++---
+ 1 file changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/toys/posix/cp.c b/toys/posix/cp.c
+index 0a378b8..6a395a4 100644
+--- a/toys/posix/cp.c
++++ b/toys/posix/cp.c
+@@ -67,7 +67,7 @@ config CP_Z
+   help
+     usage: cp [-Z]
+ 
+-    set SMACK security context of destination file to default type
++    set security context of destination file to default type
+ 
+ config MV
+   bool "mv"
+@@ -401,7 +401,7 @@ void cp_main(void)
+       TT.c.context = NULL;
+       if (!CFG_TOYBOX_LSM_NONE && lsm_enabled()) {
+         if (0>lsm_lget_context(src, &TT.c.context))
+-          perror_exit("unknown SMACK label for '%s'", src);
++          perror_exit("unknown security context for '%s'", src);
+         if (0>lsm_set_create(TT.c.context))
+           perror_exit("preserve context '%s' failed", TT.c.context);
+         free(TT.c.context);
+@@ -416,7 +416,7 @@ void cp_main(void)
+           if (toys.optflags & FLAG_Z) TT.c.context = lsm_context();
+           else {
+             if (0>lsm_lget_context(src, &TT.c.context))
+-              perror_exit("unknown SMACK label for '%s'", src);
++              perror_exit("unknown security context for '%s'", src);
+           }
+         } else error_exit("%s disabled", lsm_name());
+       }
+-- 
+2.1.4
+

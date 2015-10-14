@@ -1,0 +1,288 @@
+From 1f8798a9d0b2d91c9333a0795a4e59202e72b9af Mon Sep 17 00:00:00 2001
+From: Hyejin Kim <hyejin0906.kim@samsung.com>
+Date: Mon, 21 Sep 2015 18:46:33 +0900
+Subject: [PATCH 2/3] support smack feature for install, mv, cp and stat and
+ enable all smack feature
+
+Change-Id: I97a18bc32028d4026f9e614feeefd490e7a11d7c
+---
+ toys/other/stat.c | 58 +++++++++++++++++++++++++++++++++++-----
+ toys/posix/cp.c   | 79 ++++++++++++++++++++++++++++++++++++++++++++++++++-----
+ 2 files changed, 124 insertions(+), 13 deletions(-)
+
+diff --git a/toys/other/stat.c b/toys/other/stat.c
+index d6db44d..27b167c 100644
+--- a/toys/other/stat.c
++++ b/toys/other/stat.c
+@@ -15,6 +15,12 @@ config STAT
+     -f display filesystem status instead of file status
+     -c Output specified FORMAT string instead of default
+ 
++    The valid format escape sequences for filesystems:
++    %a  Available blocks    |%b  Total blocks       |%c  Total inodes
++    %d  Free inodes         |%f  Free blocks        |%i  File system ID
++    %l  Max filename length |%n  File name          |%s  Fragment size
++    %S  Best transfer size  |%t  File system type   |%T  Type in human readable form
++
+     The valid format escape sequences for files:
+     %a  Access bits (octal) |%A  Access bits (flags)|%b  Blocks allocated
+     %B  Bytes per block     |%d  Device ID (dec)    |%D  Device ID (hex)
+@@ -25,11 +31,14 @@ config STAT
+     %x  Access time         |%X  Access unix time   |%y  File write time
+     %Y  File write unix time|%z  Dir change time    |%Z  Dir change unix time
+ 
+-    The valid format escape sequences for filesystems:
+-    %a  Available blocks    |%b  Total blocks       |%c  Total inodes
+-    %d  Free inodes         |%f  Free blocks        |%i  File system ID
+-    %l  Max filename length |%n  File name          |%s  Fragment size
+-    %S  Best transfer size  |%t  File system type
++config STAT_C
++  bool
++  default y
++  depends on STAT && !TOYBOX_LSM_NONE
++  help
++    usage: stat
++
++    %C  Security context
+ */
+ 
+ #define FOR_stat
+@@ -46,6 +55,35 @@ GLOBALS(
+   struct group *group_name;
+ )
+ 
++static char* ftype_to_string(uint64_t ftype)
++{
++  switch (ftype) {
++    case 0xADFF: return "affs";
++    case 0x5346544e: return "ntfs";
++	case 0x1Cd1: return "devpts";
++    case 0x137D: return "ext";
++    case 0xEF51: return "ext2";
++    case 0xEF53: return "ext2/ext3";
++    case 0x1BADFACE: return "bfs";
++    case 0x9123683E: return "btrfs";
++    case 0x28cd3d45: return "cramfs";
++    case 0x3153464a: return "jfs";
++    case 0x7275: return "romfs";
++	case 0x01021994: return "tmpfs";
++	case 0x3434: return "nilfs";
++	case 0x6969: return "nfs";
++	case 0x9fa0: return "proc";
++	case 0x534F434B: return "sockfs";
++	case 0x62656572: return "sysfs";
++	case 0x517B: return "smb";
++	case 0x4d44: return "msdos";
++	case 0x4006: return "fat";
++    //case 0x43415d53: return "smackfs";
++    case 0x73717368: return "squashfs";
++    default: return "unknown";
++  }
++}
++
+ 
+ // Note: the atime, mtime, and ctime fields in struct stat are the start
+ // of embedded struct timespec, but posix won't let them use that
+@@ -70,6 +108,13 @@ static void print_stat(char type)
+     xprintf("%s", str);
+   } else if (type == 'b') xprintf("%llu", stat->st_blocks);
+   else if (type == 'B') xprintf("%lu", stat->st_blksize);
++  else if (CFG_STAT_C && type == 'C') {
++    char *label = NULL;
++	if ((lsm_lget_context(*toys.optargs, (char **)&label) > 0) && label) {
++      xprintf("%s", label);
++	  free(label);
++	}
++  }
+   else if (type == 'd') xprintf("%ldd", stat->st_dev);
+   else if (type == 'D') xprintf("%llxh", stat->st_dev);
+   else if (type == 'f') xprintf("%lx", stat->st_mode);
+@@ -113,6 +158,7 @@ static void print_statfs(char type) {
+   else if (type == 'f') xprintf("%llu", statfs->f_bfree);
+   else if (type == 'l') xprintf("%ld", statfs->f_namelen);
+   else if (type == 't') xprintf("%lx", statfs->f_type);
++  else if (type == 'T') xprintf("%s", ftype_to_string(statfs->f_type));
+   else if (type == 'i')
+     xprintf("%08x%08x", statfs->f_fsid.__val[0], statfs->f_fsid.__val[1]);
+   else if (type == 's') xprintf("%d", statfs->f_frsize);
+@@ -124,7 +170,7 @@ void stat_main(void)
+ {
+   int flagf = toys.optflags & FLAG_f;
+   char *format = flagf
+-    ? "  File: \"%n\"\n    ID: %i Namelen: %l    Type: %t\n"
++    ? "  File: \"%n\"\n    ID: %i Namelen: %l    Type: %T\n"
+       "Block Size: %s    Fundamental block size: %S\n"
+       "Blocks: Total: %b\tFree: %f\tAvailable: %a\n"
+       "Inodes: Total: %c\tFree: %d"
+diff --git a/toys/posix/cp.c b/toys/posix/cp.c
+index d5e92f2..0a378b8 100644
+--- a/toys/posix/cp.c
++++ b/toys/posix/cp.c
+@@ -7,9 +7,9 @@
+ // options shared between mv/cp must be in same order (right to left)
+ // for FLAG macros to work out right in shared infrastructure.
+ 
+-USE_CP(NEWTOY(cp, "<2"USE_CP_PRESERVE("(preserve):;")"RHLPp"USE_CP_MORE("rdaslvnF(remove-destination)")"fi[-HLP"USE_CP_MORE("d")"]"USE_CP_MORE("[-ni]"), TOYFLAG_BIN))
+-USE_MV(NEWTOY(mv, "<2"USE_CP_MORE("vnF")"fi"USE_CP_MORE("[-ni]"), TOYFLAG_BIN))
+-USE_INSTALL(NEWTOY(install, "<1cdDpsvm:o:g:", TOYFLAG_USR|TOYFLAG_BIN))
++USE_CP(NEWTOY(cp, "<2"USE_CP_PRESERVE("(preserve):;")"RHLPp"USE_CP_MORE("rdasl"USE_CP_Z("Z")"vnF(remove-destination)")"fi[-HLP"USE_CP_MORE("d")"]"USE_CP_MORE("[-ni]"), TOYFLAG_BIN))
++USE_MV(NEWTOY(mv, "<2"USE_CP_Z("Z")""USE_CP_MORE("vnF")"fi"USE_CP_MORE("[-ni]"), TOYFLAG_BIN))
++USE_INSTALL(NEWTOY(install, "<1"USE_INSTALL_Z("Z:")"cdDpsvm:o:g:", TOYFLAG_USR|TOYFLAG_BIN))
+ 
+ config CP
+   bool "cp"
+@@ -49,7 +49,7 @@ config CP_PRESERVE
+   default y
+   depends on CP_MORE
+   help
+-    usage: cp [--preserve=mota]
++    usage: cp [--preserve=motca]
+ 
+     --preserve takes either a comma separated list of attributes, or the first
+     letter(s) of:
+@@ -57,8 +57,18 @@ config CP_PRESERVE
+             mode - permissions (ignore umask for rwx, copy suid and sticky bit)
+        ownership - user and group
+       timestamps - file creation, modification, and access times.
++         context - preserve src's context.
+              all - all of the above
+ 
++config CP_Z
++  bool
++  default y
++  depends on CP_MORE && !TOYBOX_LSM_NONE
++  help
++    usage: cp [-Z]
++
++    set SMACK security context of destination file to default type
++
+ config MV
+   bool "mv"
+   default y
+@@ -96,6 +106,15 @@ config INSTALL
+     -p	Preserve timestamps
+     -s	Call "strip -p"
+     -v	Verbose
++
++config INSTALL_Z
++  bool
++  default y
++  depends on INSTALL && !TOYBOX_LSM_NONE
++  help
++    usage: [-Z context]
++
++    -Z  set security context
+ */
+ 
+ #define FOR_cp
+@@ -108,9 +127,11 @@ GLOBALS(
+       char *group;
+       char *user;
+       char *mode;
++      char *context;
+     } i;
+     struct {
+       char *preserve;
++      char *context;
+     } c;
+   };
+ 
+@@ -316,9 +337,14 @@ int cp_node(struct dirtree *try)
+       xclose(fdout);
+     }
+ 
+-    if (CFG_MV && toys.which->name[0] == 'm')
++    if (CFG_MV && toys.which->name[0] == 'm') {
+       if (unlinkat(tfd, try->name, S_ISDIR(try->st.st_mode) ? AT_REMOVEDIR :0))
+         err = "%s";
++      if (CFG_CP_Z) {
++        if (0>lsm_lset_context(catch, TT.c.context))
++          perror_exit("-Z '%s' failed", TT.c.context);
++      }
++    }
+   }
+ 
+   if (err) perror_msg(err, catch);
+@@ -328,7 +354,7 @@ int cp_node(struct dirtree *try)
+ void cp_main(void)
+ {
+   char *destname = toys.optargs[--toys.optc],
+-       *preserve[] = {"mode", "ownership", "timestamps"};
++       *preserve[] = {"mode", "ownership", "timestamps", "context"};
+   int i, destdir = !stat(destname, &TT.top) && S_ISDIR(TT.top.st_mode);
+ 
+   if (toys.optc>1 && !destdir) error_exit("'%s' not directory", destname);
+@@ -370,8 +396,30 @@ void cp_main(void)
+     if (destdir) TT.destname = xmprintf("%s/%s", destname, basename(src));
+     else TT.destname = destname;
+ 
++    // Preserve Context
++    if (TT.pflags & 8) {
++      TT.c.context = NULL;
++      if (!CFG_TOYBOX_LSM_NONE && lsm_enabled()) {
++        if (0>lsm_lget_context(src, &TT.c.context))
++          perror_exit("unknown SMACK label for '%s'", src);
++        if (0>lsm_set_create(TT.c.context))
++          perror_exit("preserve context '%s' failed", TT.c.context);
++        free(TT.c.context);
++      } else error_exit("%s disabled", lsm_name());
++    }
++
+     errno = EXDEV;
+     if (CFG_MV && toys.which->name[0] == 'm') {
++      if (CFG_CP_Z) {
++        if (lsm_enabled()) {
++          TT.c.context = NULL;
++          if (toys.optflags & FLAG_Z) TT.c.context = lsm_context();
++          else {
++            if (0>lsm_lget_context(src, &TT.c.context))
++              perror_exit("unknown SMACK label for '%s'", src);
++          }
++        } else error_exit("%s disabled", lsm_name());
++      }
+       if (!(toys.optflags & FLAG_f)) {
+         struct stat st;
+ 
+@@ -386,7 +434,14 @@ void cp_main(void)
+         }
+       }
+ 
+-      if (rc) rc = rename(src, TT.destname);
++      if (rc) {
++        rc = rename(src, TT.destname);
++        if (CFG_CP_Z) {
++          if (!rc && (toys.optflags&FLAG_Z)
++              && (0>lsm_lset_context(TT.destname, TT.c.context)))
++            perror_exit("-Z '%s' failed", TT.c.context);
++        }
++      }
+     }
+ 
+     // Skip nonexistent sources
+@@ -397,6 +452,9 @@ void cp_main(void)
+       else dirtree_handle_callback(new, TT.callback);
+     }
+     if (destdir) free(TT.destname);
++    if (CFG_CP_Z && CFG_MV && toys.which->name[0] == 'm'
++        && (toys.optflags & FLAG_Z))
++      free(TT.c.context);
+   }
+ }
+ 
+@@ -432,6 +490,13 @@ void install_main(void)
+   char **ss;
+   int flags = toys.optflags;
+ 
++  if (CFG_INSTALL_Z && (toys.optflags&FLAG_Z)) {
++    if (lsm_enabled()) {
++      if (0>lsm_set_create(TT.i.context))
++        perror_exit("bad -Z '%s'", TT.i.context);
++    } else error_msg("%s disabled", lsm_name());
++  }
++
+   if (flags & FLAG_d) {
+     for (ss = toys.optargs; *ss; ss++) {
+       if (mkpathat(AT_FDCWD, *ss, 0777, 3)) perror_msg("%s", *ss);
+-- 
+2.1.4
+
