@@ -1,0 +1,11 @@
+[Unit]
+Description=Rygel UPnP AV server
+After=dbus.service rc.pvr.service
+
+[Service]
+ExecStart=/usr/bin/rygel -c /etc/rygel.conf
+ExecStop=/usr/bin/killall -s KILL rygel
+Type=simple
+
+[Install]
+WantedBy=multi-user.target

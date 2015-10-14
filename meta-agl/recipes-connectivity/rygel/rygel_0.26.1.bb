@@ -35,6 +35,8 @@ do_install_append() {
        # Remove .la files for loadable modules
        rm -f ${D}/${libdir}/rygel-${LIBV}/engines/*.la
        rm -f ${D}/${libdir}/rygel-${LIBV}/plugins/*.la
+
+       sed -i 's,@MUSIC@;@VIDEOS@;@PICTURES@,/usr/share/media,g' ${D}/${sysconfdir}/rygel.conf
 }
 
 FILES_${PN} += "${libdir}/rygel-${LIBV}/engines ${datadir}/dbus-1 ${datadir}/icons"

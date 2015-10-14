@@ -1,0 +1,11 @@
+[Unit]
+Description=Rygel UPnP AV server
+After=dbus.service rc.pvr.service
+
+[Service]
+ExecStart=/sbin/udhcpc -i eth0 -s /usr/share/udhcpc/default.script
+ExecStop=/usr/bin/killall -s KILL udhcpc
+Type=simple
+
+[Install]
+WantedBy=multi-user.target
