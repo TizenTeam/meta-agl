@@ -3,7 +3,7 @@ SUMMARY = "AGL Demonstration for HTML5 HomeScreen"
 LICENSE = "Apache-2.0"
 LIC_FILES_CHKSUM = "file://COPYING;md5=ae6497158920d9524cf208c09cc4c984"
 
-RDEPENDS_${PN} = " qtwebkit-examples weston wayland-ivi-extension"
+RDEPENDS_${PN} = " qtwebkit-examples-examples weston wayland-ivi-extension"
 
 FILESEXTRAPATHS_prepend := ":${THISDIR}/modello-homescreen:"
 
