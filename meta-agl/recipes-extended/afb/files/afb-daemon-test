@@ -1,0 +1,3 @@
+#!/bin/sh
+
+/usr/bin/afb-daemon --verbose --port=1234 --token=123456789 --sessiondir=/tmp --rootdir=/usr/share/agl/afb-radio
