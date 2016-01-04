@@ -1,4 +1,4 @@
 #!/bin/sh
 
-LD_PRELOAD=/usr/lib/libEGL.so /usr/share/qt5/examples/webkitwidgets/browser/browser http://localhost:1234/opa
+LD_PRELOAD=/usr/lib/libEGL.so /usr/bin/qt5/qmlscene /usr/share/agl/afb-radio.qml
 
