@@ -9,19 +9,17 @@ LICENSE = "GPLv3+"
 LIC_FILES_CHKSUM = "file://LICENSE;md5=6cb04bdb88e11107e3af4d8e3f301be5"
 
 #DEPENDS = "nodejs-native"
-RDEPENDS_${PN} = "afb-daemon afb-daemon-plugin-audio afb-daemon-plugin-radio afb-daemon-plugin-token qtquickcontrols-qmlplugins qtwebengine-qmlplugins"
+RDEPENDS_${PN} = "afb-daemon afb-daemon-plugin-audio afb-daemon-plugin-radio afb-daemon-plugin-token"
 
 SRC_URI = "git://github.com/iotbzh/afb-radio;protocol=https;branch=master \
            file://afb-radio \
-           file://afb-radio.qml \
           "
-SRCREV = "bc8464b9b632671751348a904ab21bd2db39da20"
+SRCREV = "b2bc616a48824b32851c972feaaea614297aec20"
 S = "${WORKDIR}/git"
 
 do_install () {
   mkdir -p ${D}/${datadir}/agl/afb-radio
   cp -ra ${S}/dist.prod/* ${D}/${datadir}/agl/afb-radio/
-  install -m 0644 ${WORKDIR}/afb-radio.qml ${D}/${datadir}/agl
 
   mkdir -p ${D}/${bindir}
   install -m 0755 ${WORKDIR}/afb-radio ${D}/${bindir}/afb-radio

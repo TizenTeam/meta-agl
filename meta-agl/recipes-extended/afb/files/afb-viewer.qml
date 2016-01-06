@@ -7,7 +7,7 @@ ApplicationWindow {
 	height: 768
 	visible: true
 	WebEngineView {
-		url: "http://localhost:1234/opa"
+		url: Qt.application.arguments[1]
 		anchors.fill: parent
 	}
 }
