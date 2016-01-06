@@ -8,11 +8,13 @@ LICENSE = "GPLv3+"
 LIC_FILES_CHKSUM = "file://src/main.c;endline=17;md5=6cb04bdb88e11107e3af4d8e3f301be5"
 
 DEPENDS = "file json-c libmicrohttpd util-linux dbus alsa-lib rtl-sdr"
+RDEPENDS_${PN} = "qtquickcontrols-qmlplugins qtwebengine-qmlplugins"
 
 SRC_URI = "git://github.com/iotbzh/afb-daemon;protocol=https;branch=master \
            file://afb-daemon-test \
+           file://afb-viewer.qml \
           "
-SRCREV = "93daafca4d0419707cdcde181180a689a7fccbfb"
+SRCREV = "a10fa6960df758dcfcb406dcee6383be5d494187"
 S = "${WORKDIR}/git"
 
 inherit cmake pkgconfig
@@ -25,7 +27,12 @@ do_configure_prepend () {
 do_install_append() {
   mkdir -p ${D}/${bindir}
   install -m 0755 ${WORKDIR}/afb-daemon-test ${D}/${bindir}/afb-daemon-test
+
+  mkdir -p ${D}/${datadir}/agl
+  install -m 0644 ${WORKDIR}/afb-viewer.qml ${D}/${datadir}/agl
 }
+
+FILES_${PN} += "${datadir}"
 
 PACKAGES += "${PN}-meta"
 ALLOW_EMPTY_${PN}-meta = "1"
