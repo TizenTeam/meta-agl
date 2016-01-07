@@ -1,3 +1,35 @@
+### Application Framework Binder Demos (Client, Radio) for AGL distribution
+
+![AFB-Demos screenshot](http://iot.bzh/images/afb-demos.jpg)
+
+This is a custom AGL repository containing recipes for :
+ * Application Framework Binder (http://github.com/iotbzh/afb-daemon);
+ * AFB-Client (http://github.com/iotbzh/afb-client);
+ * AFB-Radio (http://github.com/iotbzh/afb-radio);
+ * easy-to-use startup scripts (afb-daemon-test, afb-client, afb-radio); 
+ * automatic DHCP client via systemd.
+
+_(build instructions are found below)_
+
+### Usage
+
+Once the image has been created, flash it to your device as usual,
+open an interactive terminal on it, and type the following :
+```
+$ afb-daemon-test
+```
+You can then run the demos directly on the target :
+```
+$ afb-client &
+& afb-radio &
+```
+Or remotely from a web browser (Chrome/Chromium being preferred) :
+```
+http://mytarget:1234/opa
+http://mytarget:1235/opa
+```
+(would you need to restart the daemons, type `afb-daemon-test` again)
+
 meta-agl, the Yocto layer for Automotive Grade Linux Distribution
 =================================================================
 
