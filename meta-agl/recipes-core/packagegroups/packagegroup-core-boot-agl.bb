@@ -18,6 +18,10 @@ inherit packagegroup
 MACHINE_ESSENTIAL_EXTRA_RDEPENDS ?= ""
 MACHINE_ESSENTIAL_EXTRA_RRECOMMENDS ?= ""
 
+# Automatically loading uvesafb driver may conflict with platform drivers
+MACHINE_ESSENTIAL_EXTRA_RDEPENDS_remove = "v86d"
+MACHINE_ESSENTIAL_EXTRA_RRECOMMENDS_remove = "v86d"
+
 # Distro can override the following VIRTUAL-RUNTIME providers:
 VIRTUAL-RUNTIME_dev_manager ?= "udev"
 VIRTUAL-RUNTIME_login_manager ?= "busybox"
