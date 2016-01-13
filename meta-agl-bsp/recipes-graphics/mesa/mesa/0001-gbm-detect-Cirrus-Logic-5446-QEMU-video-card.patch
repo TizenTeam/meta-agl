@@ -1,0 +1,50 @@
+From f484e4407cd955d0b8b27f0dfd0c0c198aa3d133 Mon Sep 17 00:00:00 2001
+From: Manuel Bachmann <mbc@iot.bzh>
+Date: Wed, 13 Jan 2016 06:33:14 +0000
+Subject: [PATCH] gbm: detect Cirrus Logic 5446 (QEMU) video card
+
+We now detect QEMU GPU adapters when initializing gbm,
+and try to load a Gallium driver named "cirrus".
+
+Signed-off-by: Manuel Bachmann <manuel.bachmann@iot.bzh>
+---
+ include/pci_ids/cirrus_pci_ids.h |    1 +
+ src/loader/pci_id_driver_map.h   |    7 +++++++
+ 2 files changed, 8 insertions(+)
+ create mode 100644 include/pci_ids/cirrus_pci_ids.h
+
+diff --git a/include/pci_ids/cirrus_pci_ids.h b/include/pci_ids/cirrus_pci_ids.h
+new file mode 100644
+index 0000000..f0506a0
+--- /dev/null
++++ b/include/pci_ids/cirrus_pci_ids.h
+@@ -0,0 +1 @@
++CHIPSET(0x00B8, SVGAII, SVGAII)
+diff --git a/src/loader/pci_id_driver_map.h b/src/loader/pci_id_driver_map.h
+index 11e39d3..7a2dc1e 100644
+--- a/src/loader/pci_id_driver_map.h
++++ b/src/loader/pci_id_driver_map.h
+@@ -53,6 +53,12 @@ static const int radeonsi_chip_ids[] = {
+ #undef CHIPSET
+ };
+ 
++static const int cirrus_chip_ids[] = {
++#define CHIPSET(chip, name, family) chip,
++#include "pci_ids/cirrus_pci_ids.h"
++#undef CHIPSET
++};
++
+ static const int vmwgfx_chip_ids[] = {
+ #define CHIPSET(chip, name, family) chip,
+ #include "pci_ids/vmwgfx_pci_ids.h"
+@@ -76,6 +82,7 @@ static const struct {
+    { 0x1002, "r300", r300_chip_ids, ARRAY_SIZE(r300_chip_ids), _LOADER_GALLIUM },
+    { 0x1002, "r600", r600_chip_ids, ARRAY_SIZE(r600_chip_ids), _LOADER_GALLIUM },
+    { 0x1002, "radeonsi", radeonsi_chip_ids, ARRAY_SIZE(radeonsi_chip_ids), _LOADER_GALLIUM},
++   { 0x1013, "cirrus", cirrus_chip_ids, ARRAY_SIZE(cirrus_chip_ids), _LOADER_GALLIUM },
+    { 0x10de, "nouveau_vieux", NULL, -1,  _LOADER_DRI, is_nouveau_vieux },
+    { 0x10de, "nouveau", NULL, -1,  _LOADER_GALLIUM },
+    { 0x15ad, "vmwgfx", vmwgfx_chip_ids, ARRAY_SIZE(vmwgfx_chip_ids), _LOADER_GALLIUM },
+-- 
+1.7.10.4
+
