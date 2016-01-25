@@ -14,7 +14,7 @@ SRC_URI = "git://github.com/iotbzh/afb-daemon;protocol=https;branch=master \
            file://afb-daemon-test \
            file://afb-viewer.qml \
           "
-SRCREV = "a10fa6960df758dcfcb406dcee6383be5d494187"
+SRCREV = "ce4624801ed46ecf912205cd984f3488e3e07bac"
 S = "${WORKDIR}/git"
 
 inherit cmake pkgconfig
