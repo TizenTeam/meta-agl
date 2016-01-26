@@ -17,7 +17,7 @@ LICENSE = "Apache-2.0"
 LIC_FILES_CHKSUM = "file://COPYING;md5=3b83ef96387f14655fc854ddc3c6bd57"
 
 SRC_URI = "git://github.com/iotbzh/afm-main;protocol=https;branch=master"
-SRCREV = "aacb635b20cda5ea0b0ed993b18f6d773de5a6c6"
+SRCREV = "7d6a9b704e4d8b183a6643565e6fd069cfd62228"
 
 SECTION = "base"
 
@@ -50,7 +50,7 @@ FILES_${PN} += "\
 	${@bb.utils.contains('DISTRO_FEATURES', 'systemd', '${systemd_user_unitdir}/afm-user-daemon.service', '', d)} \
 "
 
-RDEPENDS_${PN}_append_smack = " smack-userspace"
+RDEPENDS_${PN}_append_smack = " smack-userspace libcap"
 DEPENDS_append_smack = " smack-userspace-native"
 
 # short hack here
@@ -64,18 +64,18 @@ do_install_append() {
 }
 
 pkg_postinst_${PN}() {
-    #!/bin/sh -e
+    #!/bin/sh
 
     # avoid to run on host
     [ x"$D" != "x" ] && exit 1
 
     mkdir -p $D${afm_datadir}/applications $D${afm_datadir}/icons
-    ln -s ${systemd_user_unitdir}/afm-user-daemon.service 
     setcap cap_mac_override,cap_mac_admin,cap_setgid=ie $D${bindir}/afm-user-daemon
+    exit 0
 }
 
 pkg_postinst_${PN}_smack() {
-    #!/bin/sh -e
+    #!/bin/sh
 
     # avoid to run on host
     [ x"$D" != "x" ] && exit 1
@@ -84,6 +84,7 @@ pkg_postinst_${PN}_smack() {
     chown ${afm_name}:${afm_name} $D${afm_datadir} $D${afm_datadir}/applications $D${afm_datadir}/icons
     chsmack -a 'System::Shared' -t $D${afm_datadir} $D${afm_datadir}/applications $D${afm_datadir}/icons
     setcap cap_mac_override,cap_mac_admin,cap_setgid=ie $D${bindir}/afm-user-daemon
+    exit 0
 }
 
 BBCLASSEXTEND = "native nativesdk"
