@@ -17,7 +17,7 @@ LICENSE = "Apache-2.0"
 LIC_FILES_CHKSUM = "file://COPYING;md5=3b83ef96387f14655fc854ddc3c6bd57"
 
 SRC_URI = "git://github.com/iotbzh/afm-main;protocol=https;branch=master"
-SRCREV = "4f6adce91767b8585910b6ccd9dca61352d83721"
+SRCREV = "aacb635b20cda5ea0b0ed993b18f6d773de5a6c6"
 
 SECTION = "base"
 
@@ -66,6 +66,9 @@ do_install_append() {
 pkg_postinst_${PN}() {
     #!/bin/sh -e
 
+    # avoid to run on host
+    [ x"$D" != "x" ] && exit 1
+
     mkdir -p $D${afm_datadir}/applications $D${afm_datadir}/icons
     ln -s ${systemd_user_unitdir}/afm-user-daemon.service 
     setcap cap_mac_override,cap_mac_admin,cap_setgid=ie $D${bindir}/afm-user-daemon
@@ -73,6 +76,9 @@ pkg_postinst_${PN}() {
 
 pkg_postinst_${PN}_smack() {
     #!/bin/sh -e
+
+    # avoid to run on host
+    [ x"$D" != "x" ] && exit 1
 
     mkdir -p $D${afm_datadir}/applications $D${afm_datadir}/icons
     chown ${afm_name}:${afm_name} $D${afm_datadir} $D${afm_datadir}/applications $D${afm_datadir}/icons
