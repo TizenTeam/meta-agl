@@ -1,18 +1,6 @@
-From c34b2725817d4fd1fd6878bbb16617cb9e3e3a70 Mon Sep 17 00:00:00 2001
-From: =?UTF-8?q?Jos=C3=A9=20Bollo?= <jose.bollo@iot.bzh>
-Date: Fri, 22 Jan 2016 16:23:59 +0100
-Subject: [PATCH] removing capability enforcement
-
-Change-Id: Idb724192ceab176a611bbed45c0ebc9c8eb5dd30
----
- progs/setcap.c | 43 -------------------------------------------
- 1 file changed, 43 deletions(-)
-
-diff --git a/progs/setcap.c b/progs/setcap.c
-index 83090ae..01faa17 100644
---- a/progs/setcap.c
-+++ b/progs/setcap.c
-@@ -58,7 +58,6 @@ static int read_caps(int quiet, const char *filename, char *buffer)
+--- a/progs/setcap.c	2016-01-27 10:30:04.594207162 +0000
++++ b/progs/setcap.c	2016-01-27 10:31:49.473795137 +0000
+@@ -58,7 +58,6 @@
  
  int main(int argc, char **argv)
  {
@@ -20,7 +8,7 @@ index 83090ae..01faa17 100644
      char buffer[MAXCAP+1];
      int retval, quiet=0, verify=0;
      cap_t mycaps;
-@@ -150,53 +149,11 @@ int main(int argc, char **argv)
+@@ -150,30 +149,11 @@
  		printf("%s: OK\n", *argv);
  	    }
  	} else {
@@ -44,36 +32,10 @@ index 83090ae..01faa17 100644
 -	    }
  	    retval = cap_set_file(*++argv, cap_d);
  	    if (retval != 0) {
--		int explained = 0;
--#ifdef linux
--		cap_value_t cap;
--		cap_flag_value_t per_state;
--
--		for (cap = 0;
--		     cap_get_flag(cap_d, cap, CAP_PERMITTED, &per_state) != -1;
--		     cap++) {
--		    cap_flag_value_t inh_state, eff_state;
--
--		    cap_get_flag(cap_d, cap, CAP_INHERITABLE, &inh_state);
--		    cap_get_flag(cap_d, cap, CAP_EFFECTIVE, &eff_state);
--		    if ((inh_state | per_state) != eff_state) {
--			fprintf(stderr, "NOTE: Under Linux, effective file capabilities must either be empty, or\n"
--				"      exactly match the union of selected permitted and inheritable bits.\n");
--			explained = 1;
--			break;
--		    }
--		}
--#endif /* def linux */
--		
  		fprintf(stderr,
  			"Failed to set capabilities on file `%s' (%s)\n",
  			argv[0], strerror(errno));
--		if (!explained) {
--		    usage();
--		}
+-		usage();
  	    }
  	}
  	if (cap_d) {
--- 
-2.1.4
-
