@@ -10,7 +10,9 @@ HOMEPAGE = "https://www.aleksey.com/xmlsec"
 LICENSE = "MIT"
 LIC_FILES_CHKSUM = "file://Copyright;md5=32e47e213c77c55d2c666351d7ce16b5"
 
-SRC_URI = "git://git.gnome.org/xmlsec;branch=master;protocol=git"
+SRC_URI = "git://git.gnome.org/xmlsec;branch=master;protocol=git \
+           file://Only-require-libxslt-in-.pc-files-when-necessary.patch \
+          "
 SRCREV = "84c8281cf927b1cdcc38f343f61c3aa448a5a10f"
 
 SECTION = "base"

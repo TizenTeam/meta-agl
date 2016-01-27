@@ -24,6 +24,7 @@ SECTION = "base"
 S = "${WORKDIR}/git"
 
 DEPENDS = "openssl libxml2 xmlsec1 dbus zip unzip json-c security-manager libcap"
+RDEPENDS_${PN} = "libcap-bin"
 
 #afm_name    = "agl-framework"
 afm_name    = "afm"
