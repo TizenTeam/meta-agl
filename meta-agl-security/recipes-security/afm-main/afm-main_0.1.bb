@@ -17,7 +17,7 @@ LICENSE = "Apache-2.0"
 LIC_FILES_CHKSUM = "file://COPYING;md5=3b83ef96387f14655fc854ddc3c6bd57"
 
 SRC_URI = "git://github.com/iotbzh/afm-main;protocol=https;branch=master"
-SRCREV = "7d6a9b704e4d8b183a6643565e6fd069cfd62228"
+SRCREV = "edcfbc0fd14c3958826b625506c865310081724e"
 
 SECTION = "base"
 
