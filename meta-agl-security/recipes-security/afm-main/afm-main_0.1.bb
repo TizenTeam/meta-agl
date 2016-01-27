@@ -17,13 +17,14 @@ LICENSE = "Apache-2.0"
 LIC_FILES_CHKSUM = "file://COPYING;md5=3b83ef96387f14655fc854ddc3c6bd57"
 
 SRC_URI = "git://github.com/iotbzh/afm-main;protocol=https;branch=master"
-SRCREV = "aacb635b20cda5ea0b0ed993b18f6d773de5a6c6"
+SRCREV = "edcfbc0fd14c3958826b625506c865310081724e"
 
 SECTION = "base"
 
 S = "${WORKDIR}/git"
 
 DEPENDS = "openssl libxml2 xmlsec1 dbus zip unzip json-c security-manager libcap"
+RDEPENDS_${PN} += "libcap-bin"
 
 #afm_name    = "agl-framework"
 afm_name    = "afm"
