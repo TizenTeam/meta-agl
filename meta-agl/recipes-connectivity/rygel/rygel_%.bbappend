@@ -1,12 +1,8 @@
-# Disable everything but the media-export plugin, add the lms plugin
-PACKAGECONFIG = "media-export lms"
-PACKAGECONFIG[lms] = "--enable-lms-plugin,--disable-lms-plugin,sqlite3"
+# Disable everything but the media-export plugin
+PACKAGECONFIG = "media-export"
 
-# LightMediaScanner plugin patches
-SRC_URI += "file://0001-Add-LightMediaScanner-plugin.patch \
-            file://0002-lms-add-C-source-files.patch \
-            file://rygel.service \
-            "
+SRC_URI += " file://rygel.service \
+           "
 
 inherit systemd
 
