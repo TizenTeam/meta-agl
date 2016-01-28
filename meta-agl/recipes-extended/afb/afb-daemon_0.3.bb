@@ -7,14 +7,14 @@ HOMEPAGE = "http://www.iot.bzh"
 LICENSE = "GPLv3+"
 LIC_FILES_CHKSUM = "file://src/main.c;endline=17;md5=6cb04bdb88e11107e3af4d8e3f301be5"
 
-DEPENDS = "file json-c libmicrohttpd util-linux dbus alsa-lib rtl-sdr"
+DEPENDS = "file json-c libmicrohttpd util-linux dbus alsa-lib rtl-sdr glib-2.0 gssdp gupnp gupnp-av"
 RDEPENDS_${PN} = "qtquickcontrols-qmlplugins qtwebengine-qmlplugins"
 
 SRC_URI = "git://github.com/iotbzh/afb-daemon;protocol=https;branch=master \
            file://afb-daemon-test \
            file://afb-viewer.qml \
           "
-SRCREV = "c4ec16f3868b099f2904b54be78bcd09d3760a24"
+SRCREV = "dfc37699ea86f76c4010b3041d5b44fc5591501d"
 S = "${WORKDIR}/git"
 
 inherit cmake pkgconfig

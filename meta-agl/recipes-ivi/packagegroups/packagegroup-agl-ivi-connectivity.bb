@@ -15,5 +15,4 @@ RDEPENDS_${PN} += "\
     rtl-sdr \
     rygel \
     rygel-plugin-media-export \
-    rygel-plugin-lms \
     "

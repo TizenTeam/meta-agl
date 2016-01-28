@@ -1,26 +1,21 @@
-# Disable everything but the media-export plugin, add the lms plugin
-PACKAGECONFIG = "media-export lms"
-PACKAGECONFIG[lms] = "--enable-lms-plugin,--disable-lms-plugin,sqlite3"
+# Disable everything but the media-export plugin
+PACKAGECONFIG = "media-export"
 
-# LightMediaScanner plugin patches
-SRC_URI += "file://0001-Add-LightMediaScanner-plugin.patch \
-            file://0002-lms-add-C-source-files.patch \
-            file://rygel.service \
-            "
+SRC_URI += " file://rygel.service \
+           "
 
 inherit systemd
 
 do_install_append() {
        # Install rygel systemd service
        if ${@bb.utils.contains('DISTRO_FEATURES', 'systemd', 'true', 'false', d)}; then
-              install -m 644 -p -D ${WORKDIR}/rygel.service ${D}${systemd_user_unitdir}/rygel.service
+              install -p -D ${WORKDIR}/rygel.service ${D}${systemd_user_unitdir}/rygel.service
 
               # Execute these manually on behalf of systemctl script (from systemd-systemctl-native.bb)
               # because it does not support systemd's user mode.
-              # However, systemctl --global should be checked
               mkdir -p ${D}/etc/systemd/user/default.target.wants/
-              ln -sf ${systemd_user_unitdir}/rygel.service ${D}/etc/systemd/user/dbus-org.gnome.Rygel1.service
-              ln -sf ${systemd_user_unitdir}/rygel.service ${D}/etc/systemd/user/default.target.wants/rygel.service
+              ln -sf ${systemd_user_unitdir}/lightmediascanner.service ${D}/etc/systemd/user/dbus-org.gnome.Rygel1.service
+              ln -sf ${systemd_user_unitdir}/lightmediascanner.service ${D}/etc/systemd/user/default.target.wants/rygel.service
        fi
 }
 
