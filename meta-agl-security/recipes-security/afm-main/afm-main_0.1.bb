@@ -16,7 +16,9 @@ HOMEPAGE = "http://iotbzh.github.io/afm-main"
 LICENSE = "Apache-2.0"
 LIC_FILES_CHKSUM = "file://COPYING;md5=3b83ef96387f14655fc854ddc3c6bd57"
 
-SRC_URI = "git://github.com/iotbzh/afm-main;protocol=https;branch=master"
+SRC_URI = "git://github.com/iotbzh/afm-main;protocol=https;branch=master \
+	file://webkit-workaround.patch \
+"
 SRCREV = "507b8b43ed0768a8edafc21760184ee600ddafe6"
 
 SECTION = "base"
