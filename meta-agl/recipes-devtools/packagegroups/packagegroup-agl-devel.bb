@@ -10,7 +10,6 @@ RDEPENDS_${PN} = "\
         vim \
         lsof \
         gdb \
-        valgrind \
         perf \
         htop \
         powertop \
