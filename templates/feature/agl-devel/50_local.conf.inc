@@ -6,7 +6,6 @@ IMAGE_INSTALL_append = " \
 	less \
 	lsof \
 	gdb \
-	valgrind \
 	perf \
 	powertop \
 	latencytop \
